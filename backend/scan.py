@@ -88,38 +88,68 @@ class ScanResult:
 # ==================== 数据库操作 ====================
 
 def get_db_connection():
-    """获取 PostgreSQL 连接"""
+    """获取 PostgreSQL 连接，SQLite 回退"""
     database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL 环境变量未设置")
-    return psycopg2.connect(database_url)
+    if database_url:
+        return psycopg2.connect(database_url)
+    # Vercel / 本地测试使用 SQLite
+    import sqlite3
+    db_path = os.environ.get("SQLITE_PATH", "/tmp/agentguard.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    return conn
 
 
 def init_db():
-    """初始化数据库表"""
+    """初始化数据库表（PostgreSQL / SQLite 兼容）"""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS scan_results (
-            id SERIAL PRIMARY KEY,
-            url TEXT NOT NULL,
-            domain TEXT NOT NULL,
-            ip_address TEXT,
-            status_code INTEGER,
-            ssl_info JSONB,
-            http_headers JSONB,
-            findings JSONB,
-            scan_time FLOAT,
-            status TEXT DEFAULT 'pending',
-            risk_level TEXT,
-            error_message TEXT,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_scan_results_domain ON scan_results(domain);
-        CREATE INDEX IF NOT EXISTS idx_scan_results_status ON scan_results(status);
-        CREATE INDEX IF NOT EXISTS idx_scan_results_created ON scan_results(created_at DESC);
-    """)
+    is_sqlite = "sqlite3" in str(type(conn).__module__) if hasattr(type(conn), '__module__') else False
+    if not is_sqlite:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS scan_results (
+                id SERIAL PRIMARY KEY,
+                url TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                ip_address TEXT,
+                status_code INTEGER,
+                ssl_info JSONB,
+                http_headers JSONB,
+                findings JSONB,
+                scan_time FLOAT,
+                status TEXT DEFAULT 'pending',
+                risk_level TEXT,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_scan_results_domain ON scan_results(domain);
+            CREATE INDEX IF NOT EXISTS idx_scan_results_status ON scan_results(status);
+            CREATE INDEX IF NOT EXISTS idx_scan_results_created ON scan_results(created_at DESC);
+        """)
+    else:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS scan_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL,
+                domain TEXT NOT NULL,
+                ip_address TEXT,
+                status_code INTEGER,
+                ssl_info TEXT,
+                http_headers TEXT,
+                findings TEXT,
+                scan_time REAL,
+                status TEXT DEFAULT 'pending',
+                risk_level TEXT,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT (datetime('now')),
+                updated_at TIMESTAMP DEFAULT (datetime('now'))
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_scan_results_domain ON scan_results(domain)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_scan_results_status ON scan_results(status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_scan_results_created ON scan_results(created_at DESC)")
     conn.commit()
     cur.close()
     conn.close()
