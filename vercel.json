@@ -1,13 +1,7 @@
 {
   "version": 2,
   "framework": null,
-  "buildCommand": "pip install --break-system-packages -r backend/requirements.txt",
-  "outputDirectory": "backend",
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.py"
-    },
     {
       "src": "/(.*)",
       "dest": "/api/index.py"
@@ -15,7 +9,6 @@
   ],
   "env": {
     "GMAIL_SMTP_USER": "ls530224750@gmail.com",
-    "GMAIL_SMTP_PASSWORD": "Lisen*530224750",
-    "PIP_BREAK_SYSTEM_PACKAGES": "1"
+    "GMAIL_SMTP_PASSWORD": "Lisen*530224750"
   }
 }
